@@ -5,9 +5,9 @@
 
 ---
 
-## Integrantes
+## 👥 Integrantes
 
-| Juan Pablo Mescouto da Silva |
+| Juan Silva |
 |-------|-----------------|
 | **Aluno A** | Parte 1 — Entidade `ContaBancaria` sem controle de concorrência |
 | **Aluno B** | Parte 2 — Entidade `ContaBancariaVersionada` com `@Version` |
@@ -21,7 +21,7 @@
 - Spring Web (REST)
 - Spring Data JPA / Hibernate
 - Banco de dados H2 (em memória)
-- Apache JMeter (testes de carga)
+- K6 (testes de carga)
 
 ---
 
@@ -37,13 +37,12 @@ git clone https://github.com/JuanSilva078/bancodb.git
 cd bancodb
 ```
 
-### 2. Executar com Maven
+### 2. Executar
 ```bash
-./mvnw spring-boot:run
+mvn spring-boot:run
 ```
-> No Windows: `mvnw.cmd spring-boot:run`
 
-### 3. Acessar a aplicação
+### 3. Acessar
 - API: `http://localhost:8080`
 - Console H2: `http://localhost:8080/h2-console`
   - JDBC URL: `jdbc:h2:mem:bancodb`
@@ -51,7 +50,7 @@ cd bancodb
 
 ---
 
-## Endpoints da API
+## 📡 Endpoints da API
 
 ### Parte 1 — Sem Controle de Concorrência
 
@@ -69,81 +68,64 @@ cd bancodb
 | `POST` | `/contas-versionadas/{id}/deposito` | Deposita (com proteção de versão) |
 | `POST` | `/contas-versionadas/{id}/saque` | Saca (com proteção de versão) |
 
-### Exemplos de Requisição (curl)
-
-```bash
-# Depósito
-curl -X POST http://localhost:8080/contas/1/deposito \
-     -H "Content-Type: application/json" \
-     -d '{"valor": 100.00}'
-
-# Saque
-curl -X POST http://localhost:8080/contas/1/saque \
-     -H "Content-Type: application/json" \
-     -d '{"valor": 50.00}'
-
-# Depósito versionado
-curl -X POST http://localhost:8080/contas-versionadas/1/deposito \
-     -H "Content-Type: application/json" \
-     -d '{"valor": 100.00}'
-```
-
 ---
 
-## Testes de Concorrência com JMeter
+## 🔬 Testes de Carga com K6
 
-O arquivo `jmeter-concorrencia.jmx` na raiz do projeto contém dois grupos de threads:
-
-- **Thread Group 1 — Sem Controle** (`/contas/1/deposito`): simula o problema do Lost Update
-- **Thread Group 2 — Com @Version** (`/contas-versionadas/1/deposito`): demonstra a solução
-
-### Configuração dos Testes
-
-| Parâmetro | Valor usado |
-|-----------|-------------|
-| Número de threads | 50 |
-| Ramp-up period | 1 segundo |
-| Loop Count | 10 |
-| Total de requisições | 500 por grupo |
+### Configuração
+- **Ferramenta:** K6
+- **Usuários virtuais:** 50
+- **Duração:** 30 segundos por teste
+- **Operação:** Depósito de R$ 10,00 simultâneo na mesma conta
 
 ---
 
 ## Relatório de Conclusão
 
-### Parte 1 — O Problema: Lost Update
+### Parte 1 — O Problema: Lost Update (Sem Controle de Concorrência)
 
-**Cenário:** saldo inicial = R$ 1.000,00 | 50 threads × 10 depósitos de R$ 10,00
-**Resultado esperado:** R$ 1.000 + (500 × R$ 10,00) = **R$ 6.000,00**
-**Resultado obtido:** valor incorreto (menor que o esperado) ❌
+**Endpoint testado:** `POST /contas/1/deposito`
 
-**Por quê?**
-Múltiplas threads leem o mesmo saldo antes de qualquer uma commitar:
-```
-Thread A lê: R$ 1.000 → calcula R$ 1.010 → salva R$ 1.010
-Thread B lê: R$ 1.000 → calcula R$ 1.010 → salva R$ 1.010  ← sobrescreveu A!
-```
-Um depósito inteiro foi perdido. Isso é o **Lost Update**.
+| Métrica | Resultado |
+|---------|-----------|
+| Total de requisições | 16.866 |
+| Requisições com erro | 0% |
+| Tempo médio de resposta | 88.61ms |
 
-> *(inserir print do Summary Report do JMeter aqui)*
+**Resultado do K6:**
+
+![K6 Parte 1](prints/k6-parte1.png)
+
+**Análise:**
+Todas as 16.866 requisições retornaram HTTP 200 OK, aparentando sucesso total. Porém, ao consultar o saldo final da conta, o valor estava **R$ 50.280,00** — muito abaixo do esperado **R$ 170.660,00** (1.000 inicial + 16.866 depósitos × R$ 10). Isso significa que **R$ 120.380,00 foram perdidos** silenciosamente. Esse é o problema clássico do **Lost Update**: múltiplas threads leram o mesmo saldo antes de qualquer uma commitar, sobrescrevendo as atualizações umas das outras. Nenhum erro é reportado, mas os dados ficam corrompidos.
+
+**Saldo final incorreto:**
+
+![Saldo sem controle](prints/saldo-sem-controle.png)
 
 ---
 
 ### Parte 2 — A Solução: Locking Otimista com @Version
 
-**Cenário:** mesmo teste, mas apontando para `/contas-versionadas/1/deposito`
-**Resultado:** algumas requisições retornam **HTTP 409 Conflict**, mas o saldo final é sempre **consistente** 
+**Endpoint testado:** `POST /contas-versionadas/1/deposito`
 
-**Por quê?**
-O Hibernate inclui a versão no `WHERE` do `UPDATE`:
-```sql
-UPDATE conta_bancaria_versionada
-SET saldo = ?, version = version + 1
-WHERE id = ? AND version = ?   ← se version mudou, 0 linhas afetadas → exceção!
-```
-Quando duas threads tentam commitar com a mesma `version`, apenas uma vence.
-A outra recebe `ObjectOptimisticLockingFailureException` → tratada como HTTP 409.
+| Métrica | Resultado |
+|---------|-----------|
+| Total de requisições | 16.315 |
+| Requisições com erro (409 Conflict) | 25.68% (4.190 requisições) |
+| Requisições bem-sucedidas | 74.32% (12.125 requisições) |
+| Tempo médio de resposta | 91.6ms |
 
-> *(inserir print do Summary Report do JMeter aqui)*
+**Resultado do K6:**
+
+![K6 Parte 2](prints/k6-parte2.png)
+
+**Análise:**
+Com o `@Version`, o Hibernate incluiu a versão do registro na cláusula WHERE de cada UPDATE. Quando duas transações tentaram commitar com a mesma versão, apenas uma foi aceita — a outra recebeu `ObjectOptimisticLockingFailureException`, tratada pelo controller como **HTTP 409 Conflict**. O saldo final foi **R$ 122.250,00**, que corresponde exatamente a R$ 1.000 + 12.125 depósitos bem-sucedidos × R$ 10 = **R$ 122.250,00**. Nenhuma atualização foi perdida.
+
+**Saldo final correto:**
+
+![Saldo versionado](prints/saldo-versionado.png)
 
 ---
 
@@ -151,10 +133,13 @@ A outra recebe `ObjectOptimisticLockingFailureException` → tratada como HTTP 4
 
 | Aspecto | Sem Controle (Parte 1) | Com @Version (Parte 2) |
 |---------|----------------------|----------------------|
-| Saldo final consistente | ❌ Não | ✅ Sim |
-| Requisições com erro | 0% (mas dados errados) | ~X% com HTTP 409 |
-| Lock no banco de dados | Não | Não (otimista) |
-| Custo de performance | Baixo | Baixo |
+| Total de requisições | 16.866 | 16.315 |
+| Taxa de erro | 0% | 25.68% |
+| Tipo de erro | Nenhum (silencioso) | HTTP 409 Conflict |
+| Saldo esperado | R$ 170.660,00 | R$ 122.250,00 |
+| Saldo final obtido | R$ 50.280,00 ❌ | R$ 122.250,00 ✅ |
+| Valor perdido | R$ 120.380,00 | R$ 0,00 |
 | Integridade dos dados | Comprometida | Garantida |
 
-**Conclusão:** O Locking Otimista é uma solução eficiente para ambientes com **baixa contenção** (poucos conflitos esperados), pois não bloqueia o banco. Em caso de conflito real, ele detecta e rejeita a operação conflitante, garantindo a integridade dos dados sem sacrificar a performance.
+**Conclusão:**
+O teste evidencia claramente a diferença entre as duas abordagens. Sem controle de concorrência, o sistema aparenta funcionar normalmente mas corrompe os dados silenciosamente — R$ 120.380,00 foram perdidos sem nenhum erro reportado. Com o Locking Otimista, os conflitos são detectados e reportados explicitamente via HTTP 409, garantindo integridade total dos dados sem locks pessimistas no banco, mantendo boa performance mesmo sob alta carga.
