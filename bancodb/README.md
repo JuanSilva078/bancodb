@@ -1,20 +1,20 @@
-# 🏦 BancoDB — Controle de Concorrência com JPA/Hibernate
+# BancoDB — Controle de Concorrência com JPA/Hibernate
 
 > Projeto acadêmico para demonstração dos problemas de concorrência em sistemas transacionais
 > e a solução com **Locking Otimista** usando `@Version` do JPA/Hibernate.
 
 ---
 
-## 👥 Integrantes
+## Integrantes
 
-| Aluno | Responsabilidade |
+| Juan Pablo Mescouto da Silva |
 |-------|-----------------|
 | **Aluno A** | Parte 1 — Entidade `ContaBancaria` sem controle de concorrência |
 | **Aluno B** | Parte 2 — Entidade `ContaBancariaVersionada` com `@Version` |
 
 ---
 
-## 🛠️ Tecnologias
+## Tecnologias
 
 - Java 17
 - Spring Boot 3.3
@@ -25,7 +25,7 @@
 
 ---
 
-## ▶️ Como Rodar a Aplicação
+## Como Rodar a Aplicação
 
 ### Pré-requisitos
 - Java 17+ instalado
@@ -33,7 +33,7 @@
 
 ### 1. Clonar o repositório
 ```bash
-git clone https://github.com/<seu-usuario>/bancodb.git
+git clone https://github.com/JuanSilva078/bancodb.git
 cd bancodb
 ```
 
@@ -51,7 +51,7 @@ cd bancodb
 
 ---
 
-## 📡 Endpoints da API
+## Endpoints da API
 
 ### Parte 1 — Sem Controle de Concorrência
 
@@ -90,7 +90,7 @@ curl -X POST http://localhost:8080/contas-versionadas/1/deposito \
 
 ---
 
-## 🔬 Testes de Concorrência com JMeter
+## Testes de Concorrência com JMeter
 
 O arquivo `jmeter-concorrencia.jmx` na raiz do projeto contém dois grupos de threads:
 
@@ -108,7 +108,7 @@ O arquivo `jmeter-concorrencia.jmx` na raiz do projeto contém dois grupos de th
 
 ---
 
-## 📊 Relatório de Conclusão
+## Relatório de Conclusão
 
 ### Parte 1 — O Problema: Lost Update
 
@@ -131,7 +131,7 @@ Um depósito inteiro foi perdido. Isso é o **Lost Update**.
 ### Parte 2 — A Solução: Locking Otimista com @Version
 
 **Cenário:** mesmo teste, mas apontando para `/contas-versionadas/1/deposito`
-**Resultado:** algumas requisições retornam **HTTP 409 Conflict**, mas o saldo final é sempre **consistente** ✅
+**Resultado:** algumas requisições retornam **HTTP 409 Conflict**, mas o saldo final é sempre **consistente** 
 
 **Por quê?**
 O Hibernate inclui a versão no `WHERE` do `UPDATE`:
